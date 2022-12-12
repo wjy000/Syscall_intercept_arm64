@@ -3,3 +3,6 @@
 .idea
 .externalNativeBuild
 .cxx
+/Syscall_intercept_arm64
+/cmake-build-debug
+/cmake-build-debug-android
