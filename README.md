@@ -19,7 +19,7 @@ void show_helper(){
 ```
 支持spawn模式和attach模式,
 - spawn模式
-打开目标app后运行指令
+运行指令后手动打开目标app
 ```
 Syscall_intercept -z zygote_pid -n package_name
 ```
