@@ -78,5 +78,18 @@ void openat_item(pid_t pid,user_pt_regs regs){
 ~/Library/Android/sdk/ndk-bundle/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android30-clang++ -target aarch64-linux-android21 Syscall_intercept_arm64.cpp Syscall_item_enter_arm64.cpp -o Syscall_intercept_arm64 -static-libstdc++
 ```
 
+##### CMake 编译
+1. 添加Toolchain；CLion -> Preferences -> Build, Execution, Deployment -> Toolchains -> 添加一个toolchain，将cmake路径指向AndroidSDK目录下的cmake，并命名为Android
+2. 配置CMake；CLion -> Preferences -> Build, Execution, Deployment -> CMake -> 将Toolchain选择为刚才第一步添加的Android -> 添加CMake options选项，其内容从Android Studio产生的命令中可以看出，配置为如下内容
+```
+-DCMAKE_TOOLCHAIN_FILE="~/Library/Android/sdk/ndk-bundle/build/cmake/android.toolchain.cmake"
+-DCMAKE_SYSTEM_NAME=Android
+-DANDROID_ABI=arm64-v8a
+-DCMAKE_ANDROID_NDK="~/Library/Android/sdk/ndk-bundle"
+-DCMAKE_SYSTEM_VERSION=30
+-DCMAKE_C_FLAGS=""
+-DCMAKE_CXX_FLAGS=""
+-DCMAKE_ANDROID_NDK_TOOLCHAIN_VERSION=clang++
+```
 TODO
 只是一个能跑的玩具，主要是把思路抛出来，后续可以适配更多的系统调用，可以添加栈回溯等等功能~
