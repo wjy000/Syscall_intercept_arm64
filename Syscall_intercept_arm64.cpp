@@ -41,7 +41,7 @@ pid_t target_pid = -1;
 pid_t zygote_pid = -1;
 char appname[128];
 int tids_count = 0;
-std::vector <pid_t> target_tids;
+std::vector<pid_t> target_tids;
 std::map<pid_t, int> enter_or_leave;
 
 int main(int argc, char *argv[]) {
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
                 char name[256] = {0};
                 getNameByPid(wait_pid, name);
                 #ifdef DEBUG
-                printf("wait_pid: %d,name: %s\n", wait_pid, name);
+                printf("wait_pid: %d,name: %s, appname: %s\n", wait_pid, name, appname);
                 #endif
                 if (strstr(appname, name) != 0) {
                     printf("匹配到appname: %s\n", appname);
@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
                     target_pid = wait_pid;
                     printf("appname: %s pid: %d\n", appname, target_pid);
                     success = 1;
-                    // 拦截目标进程的clone和exit,clone重要 exit调试用
+                    // 拦截目标进程的clone和exit,clone重要 exit调试用, 跟踪多线程程序需要使用PTRACE_SETOPTIONS来设置ptrace相关属性
                     res = ptrace(PTRACE_SETOPTIONS, target_pid, (void *) 0,
                                  (void *) (PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXIT | PTRACE_O_TRACEVFORK));
                     printf("ptrace PTRACE_O_TRACECLONE|PTRACE_O_TRACEEXIT res: %d\n", res);
@@ -181,12 +181,13 @@ int main(int argc, char *argv[]) {
     if (success) { // 没有break
         // 获取到目标进程pid后，拦截它的system_call
         ptrace(PTRACE_SYSCALL, target_pid, 0, 0);
-        while (1) {
+        while (true) {
+            //等待所有子进程,WUNTRACED:如果子进程进入暂停执行情况则马上返回，但结束状态不予以理会。子进程的结束状态返回后存于 status，底下有几个宏可判别结束情况
             wait_pid = waitpid(-1, &status, __WALL | WUNTRACED);
             if (enter_or_leave.find(wait_pid) == enter_or_leave.end()) {
                 enter_or_leave[wait_pid] = ENTER; // 设置新线程 （确保
             }
-
+            //目标进程退出
             if (WIFEXITED(status)) { // 自己退出的时候
                 #ifdef DEBUG
                 print_status((char *) "exit", wait_pid, status);
@@ -204,8 +205,8 @@ int main(int argc, char *argv[]) {
                 #endif
                 continue;
             }
-
-            if (WIFSTOPPED(status)) {
+                //目标进程处于暂停状态
+            else if (WIFSTOPPED(status)) {
                 if (WSTOPSIG(status) == SIGSTOP) {
                     if (zygote_pid == -1) { // attach 模式多线程处理
                         // 拦截目标进程的clone和exit,clone重要 exit调试用
@@ -219,12 +220,14 @@ int main(int argc, char *argv[]) {
                     }
                 }
                 if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_CLONE << 8))) {
+                    //获取刚刚发生的ptrace事件消息，并存放在跟踪进程由data指向的位置,addr参数忽略,data是目标进程的pid
                     ptrace(PTRACE_GETEVENTMSG, wait_pid, 0,
                            &tmp_pid);      // The PID of the new thread can be retrieved with PTRACE_GETEVENTMSG
                     target_tids.push_back(tmp_pid);
                     tids_count++;
                 }
                 if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_VFORK << 8))) {
+                    //同上
                     ptrace(PTRACE_GETEVENTMSG, wait_pid, 0,
                            &tmp_pid);      // The PID of the new process can be retrieved with PTRACE_GETEVENTMSG
                     target_tids.push_back(tmp_pid);
@@ -237,10 +240,13 @@ int main(int argc, char *argv[]) {
                 }
                 ptrace(PTRACE_SYSCALL, wait_pid, 0, 0);
             }
-            if (WIFSIGNALED(status)) { // 仅仅在线程强制结束时会收到（SIGKILL 9），不会走上面的WIFEXITED
+                //目标进程停止
+            else if (WIFSIGNALED(status)) { // 仅仅在线程强制结束时会收到（SIGKILL 9），不会走上面的WIFEXITED
                 #ifdef DEBUG
                 print_status((char *) "signal", wait_pid, status);
                 #endif
+            } else {
+                printf("未知 status:%d\n", status);
             }
         }
     }
@@ -266,6 +272,7 @@ void enterSysCall(pid_t pid) {
     io.iov_base = &regs;
     io.iov_len = sizeof(regs);
 
+    //读取tracee的寄存器
     ptrace(PTRACE_GETREGSET, pid, (void *) NT_PRSTATUS, &io);
     SysCall_item_enter_switch(pid, regs);
     enter_or_leave[pid] = LEAVE;
